@@ -16,7 +16,7 @@ async function editImage(imageUrl, prompt) {
     }
   );
 
-  return output; // Usually a list of URLs
+  return output;
 }
 
 module.exports = editImage;
