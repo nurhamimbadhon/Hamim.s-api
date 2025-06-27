@@ -1,26 +1,64 @@
-const multer = require("multer");
-const fs = require("fs");
+const express = require("express");
 const path = require("path");
-const editImage = require("./api");
+const fs = require("fs");
+require("dotenv").config();
 
-const upload = multer({ dest: "uploads/" });
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-module.exports = function (app, routePath) {
-  app.post(routePath, upload.single("image"), async (req, res) => {
-    const prompt = req.body.prompt;
-    const imagePath = req.file.path;
+// Middleware for parsing JSON and URL-encoded data
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-    // Fake a public URL — Replicate models usually require externally hosted images
-    const hostedImageUrl = `https://telegra.ph/file/${req.file.filename}.jpg`;
+// Create uploads directory if it doesn't exist
+const uploadsDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
+//--Serve web--//
+app.use(express.static(path.join(__dirname, "web")));
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "web", "index.html"));
+});
+
+app.get("/ping", (req, res) => res.send("pong"));
+
+//--🧠 Dynamic API Loader--//
+function loadAPI(apiName, customEndpoint = null) {
+  const apiPath = path.join(__dirname, apiName, "server.js");
+  if (fs.existsSync(apiPath)) {
     try {
-      const result = await editImage(hostedImageUrl, prompt);
-      res.json({ result });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
+      const register = require(apiPath);
+      const routePath = customEndpoint || `/api/${apiName}`;
+      register(app, routePath);
+      console.log(`✅ Loaded: ${apiName} at ${routePath}`);
+    } catch (error) {
+      console.error(`❌ Error loading ${apiName}:`, error.message);
     }
+  } else {
+    console.warn(`⚠️  ${apiPath} not found.`);
+  }
+}
 
-    // Cleanup
-    fs.unlinkSync(path.resolve(imagePath));
-  });
-};
+//--🧩Add API's--//
+loadAPI("picedit", "/edit-photo");
+loadAPI("imgbb", "/imgbb");
+// loadAPI("bgremove", "/api/remove-bg");
+// loadAPI("faceblur"); // uses default: /api/faceblur
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Something went wrong!' });
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'Route not found' });
+});
+
+//--Start server--//
+app.listen(PORT, () => {
+  console.log(`🚀 App running at http://localhost:${PORT}`);
+});
