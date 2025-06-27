@@ -1,64 +1,93 @@
-const express = require("express");
-const path = require("path");
+const multer = require("multer");
 const fs = require("fs");
-require("dotenv").config();
+const path = require("path");
+const editImage = require("./api");
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Middleware for parsing JSON and URL-encoded data
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Create uploads directory if it doesn't exist
-const uploadsDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-//--Serve web--//
-app.use(express.static(path.join(__dirname, "web")));
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "web", "index.html"));
-});
-
-app.get("/ping", (req, res) => res.send("pong"));
-
-//--🧠 Dynamic API Loader--//
-function loadAPI(apiName, customEndpoint = null) {
-  const apiPath = path.join(__dirname, apiName, "server.js");
-  if (fs.existsSync(apiPath)) {
-    try {
-      const register = require(apiPath);
-      const routePath = customEndpoint || `/api/${apiName}`;
-      register(app, routePath);
-      console.log(`✅ Loaded: ${apiName} at ${routePath}`);
-    } catch (error) {
-      console.error(`❌ Error loading ${apiName}:`, error.message);
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = path.join(__dirname, "..", "uploads");
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
     }
-  } else {
-    console.warn(`⚠️  ${apiPath} not found.`);
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
   }
-}
-
-//--🧩Add API's--//
-loadAPI("picedit", "/edit-photo");
-loadAPI("imgbb", "/imgbb");
-// loadAPI("bgremove", "/api/remove-bg");
-// loadAPI("faceblur"); // uses default: /api/faceblur
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
 });
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Check if file is an image
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'), false);
+    }
+  }
 });
 
-//--Start server--//
-app.listen(PORT, () => {
-  console.log(`🚀 App running at http://localhost:${PORT}`);
-});
+module.exports = function (app, routePath) {
+  app.post(routePath, upload.single("image"), async (req, res) => {
+    try {
+      // Validate required fields
+      if (!req.file) {
+        return res.status(400).json({ error: "No image file provided" });
+      }
+      
+      if (!req.body.prompt) {
+        return res.status(400).json({ error: "No prompt provided" });
+      }
+
+      const prompt = req.body.prompt;
+      const imagePath = req.file.path;
+
+      // For deployment, you'll need to upload to a proper image hosting service
+      // This is a placeholder - replace with actual image hosting logic
+      const hostedImageUrl = await uploadToImageHost(imagePath);
+
+      const result = await editImage(hostedImageUrl, prompt);
+      
+      res.json({ 
+        success: true,
+        result: result,
+        message: "Image processed successfully"
+      });
+
+    } catch (err) {
+      console.error("Error processing image:", err);
+      res.status(500).json({ 
+        success: false,
+        error: err.message || "Failed to process image"
+      });
+    } finally {
+      // Cleanup uploaded file
+      if (req.file && req.file.path && fs.existsSync(req.file.path)) {
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (cleanupErr) {
+          console.error("Error cleaning up file:", cleanupErr);
+        }
+      }
+    }
+  });
+
+  // Health check endpoint
+  app.get(routePath + "/health", (req, res) => {
+    res.json({ status: "OK", service: "picedit" });
+  });
+};
+
+// Placeholder function - implement actual image hosting
+async function uploadToImageHost(imagePath) {
+  // TODO: Implement actual image hosting (e.g., Cloudinary, AWS S3, etc.)
+  // For now, return a placeholder URL
+  const filename = path.basename(imagePath);
+  return `https://your-image-host.com/uploads/${filename}`;
+  }
