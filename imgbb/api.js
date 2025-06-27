@@ -1,48 +1,3 @@
-const express = require('express');
-const multer = require('multer');
-const axios = require('axios');
-const FormData = require('form-data');
-const fs = require('fs');
-const path = require('path');
-const dotenv = require('dotenv');
-
-dotenv.config();
-const router = express.Router();
-
-// Ensure uploads directory exists
-const uploadsDir = path.join(__dirname, '..', 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-// Configure multer storage
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadsDir);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
-const upload = multer({ 
-  storage: storage,
-  limits: {
-    fileSize: 32 * 1024 * 1024 // 32MB limit (ImgBB's max)
-  },
-  fileFilter: (req, file, cb) => {
-    // Check if file is an image
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/webp'];
-    if (allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files (JPEG, PNG, GIF, BMP, WebP) are allowed!'), false);
-    }
-  }
-});
-
-// 📤 ImgBB upload endpoint
 router.post('/', upload.single('image'), async (req, res) => {
   let filePath = null;
   
@@ -55,6 +10,9 @@ router.post('/', upload.single('image'), async (req, res) => {
       });
     }
 
+    // Debug log
+    console.log('API Key present:', !!process.env.IMGBB_API_KEY);
+
     // Validate file upload
     if (!req.file) {
       return res.status(400).json({ 
@@ -64,6 +22,7 @@ router.post('/', upload.single('image'), async (req, res) => {
     }
 
     filePath = req.file.path;
+    console.log('File uploaded to:', filePath);
 
     // Verify file exists and is readable
     if (!fs.existsSync(filePath)) {
@@ -73,10 +32,13 @@ router.post('/', upload.single('image'), async (req, res) => {
       });
     }
 
-    // Create form data for ImgBB API
-    const formData = new FormData();
-    formData.append('image', fs.createReadStream(filePath));
+    // Method 1: Using base64 encoding (often more reliable)
+    const imageBuffer = fs.readFileSync(filePath);
+    const base64Image = imageBuffer.toString('base64');
 
+    const formData = new FormData();
+    formData.append('image', base64Image);
+    
     // Add optional parameters if provided
     if (req.body.name) {
       formData.append('name', req.body.name);
@@ -84,6 +46,8 @@ router.post('/', upload.single('image'), async (req, res) => {
     if (req.body.expiration) {
       formData.append('expiration', req.body.expiration);
     }
+
+    console.log('Uploading to ImgBB...');
 
     // Upload to ImgBB
     const response = await axios.post(
@@ -96,6 +60,8 @@ router.post('/', upload.single('image'), async (req, res) => {
         timeout: 30000 // 30 second timeout
       }
     );
+
+    console.log('ImgBB Response:', response.status, response.data?.success);
 
     // Check if upload was successful
     if (response.data && response.data.success) {
@@ -129,6 +95,7 @@ router.post('/', upload.single('image'), async (req, res) => {
 
   } catch (error) {
     console.error('ImgBB upload error:', error.message);
+    console.error('Error details:', error.response?.data || 'No additional details');
     
     // Handle specific error types
     let errorMessage = 'Failed to upload image to ImgBB';
@@ -137,6 +104,8 @@ router.post('/', upload.single('image'), async (req, res) => {
     if (error.response) {
       // ImgBB API error
       statusCode = error.response.status;
+      console.error('ImgBB API Response:', error.response.data);
+      
       if (error.response.data && error.response.data.error) {
         errorMessage = error.response.data.error.message || errorMessage;
       }
@@ -148,7 +117,8 @@ router.post('/', upload.single('image'), async (req, res) => {
 
     res.status(statusCode).json({
       success: false,
-      error: errorMessage
+      error: errorMessage,
+      details: error.response?.data || error.message
     });
 
   } finally {
@@ -156,25 +126,10 @@ router.post('/', upload.single('image'), async (req, res) => {
     if (filePath && fs.existsSync(filePath)) {
       try {
         fs.unlinkSync(filePath);
+        console.log('Temporary file cleaned up');
       } catch (cleanupError) {
         console.error('Error cleaning up file:', cleanupError.message);
       }
     }
   }
 });
-
-// 📋 Get upload info endpoint (optional)
-router.get('/info', (req, res) => {
-  res.json({
-    service: 'ImgBB Image Upload',
-    maxFileSize: '32MB',
-    supportedFormats: ['JPEG', 'PNG', 'GIF', 'BMP', 'WebP'],
-    endpoint: 'POST /',
-    parameters: {
-      required: ['image (file)'],
-      optional: ['name (string)', 'expiration (seconds)']
-    }
-  });
-});
-
-module.exports = router;
