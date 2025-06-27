@@ -231,6 +231,67 @@
             display: none;
         }
 
+        .api-response {
+            background: #1e1e1e;
+            border-radius: 8px;
+            margin: 15px 0;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .response-header {
+            background: #2d2d2d;
+            padding: 12px 20px;
+            border-bottom: 1px solid #404040;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status-code {
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            font-weight: bold;
+        }
+
+        .status-code.success {
+            background: #28a745;
+            color: white;
+        }
+
+        .status-code.error {
+            background: #dc3545;
+            color: white;
+        }
+
+        .response-body {
+            background: #1e1e1e;
+            color: #f8f8f2;
+            padding: 20px;
+            margin: 0;
+            font-family: 'Fira Code', 'Courier New', monospace;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .error-response {
+            color: #ff6b6b;
+            background: #2d1b1b;
+        }
+
+        .image-preview {
+            text-align: center;
+            margin: 15px 0;
+            padding: 15px;
+            background: #fff;
+            border-radius: 8px;
+            border: 2px dashed #ddd;
+        }
+
         .loading {
             display: inline-block;
             width: 20px;
@@ -377,7 +438,7 @@
         </footer>
     </div>
 
-    <script>
+      <script>
         const API_BASE_URL = 'https://hamim-s-api.onrender.com';
 
         const endpoints = {
@@ -466,17 +527,29 @@
                 
                 const data = await response.json();
                 
-                if (response.ok) {
-                    resultDiv.innerHTML = `
-                        <h4>✅ Upload Successful!</h4>
-                        <p><strong>Image URL:</strong> <a href="${data.url || data.data?.url}" target="_blank">${data.url || data.data?.url}</a></p>
-                        <img src="${data.url || data.data?.url}" style="max-width: 300px; border-radius: 10px; margin-top: 10px;">
-                    `;
-                } else {
-                    resultDiv.innerHTML = `<h4>❌ Upload Failed</h4><p>${data.message || 'Unknown error occurred'}</p>`;
-                }
+                resultDiv.innerHTML = `
+                    <h4>${response.ok ? '✅' : '❌'} API Response</h4>
+                    <div class="api-response">
+                        <div class="response-header">
+                            <span class="status-code ${response.ok ? 'success' : 'error'}">
+                                Status: ${response.status}
+                            </span>
+                        </div>
+                        <pre class="response-body">${JSON.stringify(data, null, 2)}</pre>
+                    </div>
+                    ${data.url || data.data?.url ? `
+                        <div class="image-preview">
+                            <img src="${data.url || data.data?.url}" style="max-width: 300px; border-radius: 10px; margin-top: 15px;">
+                        </div>
+                    ` : ''}
+                `;
             } catch (error) {
-                resultDiv.innerHTML = `<h4>❌ Error</h4><p>${error.message}</p>`;
+                resultDiv.innerHTML = `
+                    <h4>❌ Network Error</h4>
+                    <div class="api-response">
+                        <pre class="response-body error-response">${error.message}</pre>
+                    </div>
+                `;
             }
         }
 
@@ -517,17 +590,29 @@
                 
                 const data = await response.json();
                 
-                if (response.ok) {
-                    resultDiv.innerHTML = `
-                        <h4>✅ Edit Successful!</h4>
-                        <p><strong>Edited Image:</strong></p>
-                        <img src="${data.url || data.editedImage}" style="max-width: 300px; border-radius: 10px; margin-top: 10px;">
-                    `;
-                } else {
-                    resultDiv.innerHTML = `<h4>❌ Edit Failed</h4><p>${data.message || 'Unknown error occurred'}</p>`;
-                }
+                resultDiv.innerHTML = `
+                    <h4>${response.ok ? '✅' : '❌'} API Response</h4>
+                    <div class="api-response">
+                        <div class="response-header">
+                            <span class="status-code ${response.ok ? 'success' : 'error'}">
+                                Status: ${response.status}
+                            </span>
+                        </div>
+                        <pre class="response-body">${JSON.stringify(data, null, 2)}</pre>
+                    </div>
+                    ${data.url || data.editedImage ? `
+                        <div class="image-preview">
+                            <img src="${data.url || data.editedImage}" style="max-width: 300px; border-radius: 10px; margin-top: 15px;">
+                        </div>
+                    ` : ''}
+                `;
             } catch (error) {
-                resultDiv.innerHTML = `<h4>❌ Error</h4><p>${error.message}</p>`;
+                resultDiv.innerHTML = `
+                    <h4>❌ Network Error</h4>
+                    <div class="api-response">
+                        <pre class="response-body error-response">${error.message}</pre>
+                    </div>
+                `;
             }
         }
 
@@ -559,4 +644,4 @@
         document.head.appendChild(style);
     </script>
 </body>
-  </html>
+</html>          
