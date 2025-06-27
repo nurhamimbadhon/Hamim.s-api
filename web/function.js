@@ -1,6 +1,5 @@
 
-//--edit photo api--//
-
+//--photo edit api--//
 
 document.getElementById("editForm").onsubmit = async function (e) {
   e.preventDefault();
@@ -14,9 +13,11 @@ document.getElementById("editForm").onsubmit = async function (e) {
   form.append("prompt", document.getElementById("prompt").value);
 
   try {
-    const response = await fetch("/edit-photo", {
+    const response = await fetch("https://hamim-s-api.onrender.com/edit-photo", {
       method: "POST",
       body: form,
+      // Note: When sending FormData, don't set Content-Type header
+      // The browser will set it automatically with the correct boundary
     });
 
     const data = await response.json();
@@ -27,11 +28,10 @@ document.getElementById("editForm").onsubmit = async function (e) {
     }
   } catch (err) {
     alert("Error: " + err.message);
+  } finally {
+    loading.style.display = "none";
   }
-
-  loading.style.display = "none";
 };
-
 
 //--imgbb api--//
 
