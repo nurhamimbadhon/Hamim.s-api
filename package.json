@@ -1,27 +1,75 @@
 {
   "name": "hamim-apis",
-  "version": "1.0.0",
-  "description": "API collection for image processing",
+  "version": "1.1.0",
+  "description": "Enhanced API collection for AI-powered image processing with security and performance optimizations",
   "main": "runall.js",
   "scripts": {
     "start": "node runall.js",
-    "dev": "nodemon runall.js"
+    "dev": "nodemon runall.js",
+    "dev:debug": "nodemon --inspect runall.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint *.js **/*.js",
+    "production": "NODE_ENV=production node runall.js",
+    "check-updates": "npm outdated",
+    "security-audit": "npm audit"
   },
-  "keywords": ["api", "image-processing", "express"],
-  "author": "Hamim",
+  "keywords": [
+    "api",
+    "image-processing", 
+    "express",
+    "ai",
+    "replicate",
+    "multer",
+    "image-editing",
+    "batch-processing",
+    "nodejs",
+    "rest-api"
+  ],
+  "author": {
+    "name": "Hamim",
+    "email": "your-email@example.com"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/hamim-apis.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/hamim-apis/issues"
+  },
+  "homepage": "https://github.com/yourusername/hamim-apis#readme",
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
   },
   "dependencies": {
-    "axios": "^1.6.0",
-    "dotenv": "^16.0.3",
+    "axios": "^1.6.2",
+    "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
     "form-data": "^4.0.0",
+    "helmet": "^7.1.0",
     "multer": "^1.4.5-lts.1",
-    "replicate": "^0.24.0"
+    "replicate": "^0.25.1"
   },
   "devDependencies": {
-    "nodemon": "^3.0.0"
-  }
+    "nodemon": "^3.0.2",
+    "eslint": "^8.54.0"
+  },
+  "optionalDependencies": {
+    "sharp": "^0.32.6"
+  },
+  "peerDependencies": {},
+  "config": {
+    "port": 3000,
+    "max_file_size": "10MB",
+    "rate_limit_window": "15min",
+    "rate_limit_max": 100
+  },
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ],
+  "packageManager": "npm@9.0.0"
 }
