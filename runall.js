@@ -1,4 +1,3 @@
-// Fixed runall.js - Deployment-friendly version
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
@@ -6,283 +5,253 @@ require("dotenv").config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const NODE_ENV = process.env.NODE_ENV || 'development';
 
-// Try to load optional dependencies safely
-let helmet, rateLimit;
-try {
-  helmet = require("helmet");
-  rateLimit = require("express-rate-limit");
-} catch (error) {
-  console.warn("⚠️  Optional security packages not found. Install helmet and express-rate-limit for enhanced security.");
+// Middleware for parsing JSON and URL-encoded data
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Create uploads directory if it doesn't exist
+const uploadsDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Apply security middleware only if available
-if (helmet) {
-  app.use(helmet({
-    contentSecurityPolicy: false,
-    crossOriginEmbedderPolicy: false
-  }));
-}
-
-// Apply rate limiting only if available
-if (rateLimit) {
-  const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: NODE_ENV === 'production' ? 100 : 1000,
-    message: {
-      error: "Too many requests from this IP, please try again later.",
-      code: "RATE_LIMIT_EXCEEDED"
-    },
-    standardHeaders: true,
-    legacyHeaders: false,
-  });
-  app.use(limiter);
-}
-
-// Basic middleware
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
-// Request logging middleware
-app.use((req, res, next) => {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] ${req.method} ${req.path} - ${req.ip}`);
-  next();
+//--Serve web--//
+app.use(express.static(path.join(__dirname, "web")));
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "web", "index.html"));
 });
 
-// Create required directories safely
-const requiredDirs = ['uploads', 'temp'];
-requiredDirs.forEach(dir => {
-  const dirPath = path.join(__dirname, dir);
-  try {
-    if (!fs.existsSync(dirPath)) {
-      fs.mkdirSync(dirPath, { recursive: true });
-      console.log(`📁 Created directory: ${dir}`);
-    }
-  } catch (error) {
-    console.warn(`⚠️  Could not create directory ${dir}:`, error.message);
-  }
-});
+app.get("/ping", (req, res) => res.send("pong"));
 
-//--Serve web files--//
-const webPath = path.join(__dirname, "web");
-if (fs.existsSync(webPath)) {
-  app.use(express.static(webPath, {
-    maxAge: NODE_ENV === 'production' ? '1d' : '0',
-    etag: true
-  }));
-  
-  app.get("/", (req, res) => {
-    const indexPath = path.join(webPath, "index.html");
-    if (fs.existsSync(indexPath)) {
-      res.sendFile(indexPath);
-    } else {
-      res.json({ 
-        message: "Welcome to Hamim APIs",
-        status: "running",
-        apis: app.locals.apiRegistry || []
-      });
-    }
-  });
-} else {
-  app.get("/", (req, res) => {
-    res.json({ 
-      message: "Welcome to Hamim APIs",
-      status: "running",
-      timestamp: new Date().toISOString()
-    });
-  });
-}
+// Track loaded APIs for health monitoring
+const loadedAPIs = new Map();
 
-// Health check endpoints
-app.get("/ping", (req, res) => res.json({ 
-  status: "pong", 
-  timestamp: new Date().toISOString(),
-  uptime: Math.floor(process.uptime())
-}));
-
-app.get("/status", (req, res) => {
-  const memUsage = process.memoryUsage();
-  res.json({
-    status: "running",
-    environment: NODE_ENV,
-    version: "1.1.0",
-    uptime: `${Math.floor(process.uptime())} seconds`,
-    memory: {
-      used: `${Math.round(memUsage.heapUsed / 1024 / 1024)} MB`,
-      total: `${Math.round(memUsage.heapTotal / 1024 / 1024)} MB`
-    },
-    timestamp: new Date().toISOString()
-  });
-});
-
-//--🧠 Safe Dynamic API Loader--//
-function loadAPI(apiName, customEndpoint = null, options = {}) {
+//--🧠 Enhanced Dynamic API Loader with Error Isolation--//
+function loadAPI(apiName, customEndpoint = null) {
   const apiPath = path.join(__dirname, apiName, "server.js");
+  const routePath = customEndpoint || `/api/${apiName}`;
   
+  // Initialize API status
+  loadedAPIs.set(apiName, {
+    path: routePath,
+    status: 'loading',
+    error: null,
+    lastAttempt: new Date()
+  });
+
   if (!fs.existsSync(apiPath)) {
-    console.warn(`⚠️  ${apiPath} not found. Skipping ${apiName}.`);
+    console.warn(`⚠️  ${apiPath} not found.`);
+    loadedAPIs.set(apiName, {
+      path: routePath,
+      status: 'not_found',
+      error: 'API file not found',
+      lastAttempt: new Date()
+    });
     return false;
   }
 
   try {
+    // Clear require cache to allow reloading if needed
+    delete require.cache[require.resolve(apiPath)];
+    
     const register = require(apiPath);
-    const routePath = customEndpoint || `/api/${apiName}`;
     
+    // Validate that the required module exports a function
     if (typeof register !== 'function') {
-      throw new Error(`${apiName}/server.js must export a function`);
+      throw new Error('API module must export a function');
     }
+
+    // Create isolated router for this API
+    const apiRouter = express.Router();
     
-    // Apply rate limiting only if available and specified
-    if (options.rateLimit && rateLimit) {
-      app.use(routePath, rateLimit(options.rateLimit));
-    }
+    // Wrap API registration in try-catch to isolate errors
+    register(apiRouter, '');
     
-    register(app, routePath);
+    // Mount the isolated router
+    app.use(routePath, apiRouter);
+    
+    // Add error handling middleware specifically for this API
+    app.use(routePath, (err, req, res, next) => {
+      console.error(`❌ Error in ${apiName}:`, err.message);
+      
+      // Update API status
+      loadedAPIs.set(apiName, {
+        path: routePath,
+        status: 'error',
+        error: err.message,
+        lastAttempt: new Date()
+      });
+      
+      res.status(500).json({ 
+        error: `API ${apiName} encountered an error`,
+        details: process.env.NODE_ENV === 'development' ? err.message : undefined
+      });
+    });
     
     console.log(`✅ Loaded: ${apiName} at ${routePath}`);
-    
-    // Add API to registry
-    if (!app.locals.apiRegistry) {
-      app.locals.apiRegistry = [];
-    }
-    app.locals.apiRegistry.push({
-      name: apiName,
+    loadedAPIs.set(apiName, {
       path: routePath,
-      loadedAt: new Date().toISOString()
+      status: 'active',
+      error: null,
+      lastAttempt: new Date()
     });
     
     return true;
+    
   } catch (error) {
     console.error(`❌ Error loading ${apiName}:`, error.message);
+    
+    // Update API status but don't crash the server
+    loadedAPIs.set(apiName, {
+      path: routePath,
+      status: 'failed',
+      error: error.message,
+      lastAttempt: new Date()
+    });
+    
+    // Create a fallback route for the failed API
+    app.use(routePath, (req, res) => {
+      res.status(503).json({
+        error: `API ${apiName} is currently unavailable`,
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+        status: 'service_unavailable'
+      });
+    });
+    
     return false;
   }
 }
 
-//--🧩 Load APIs--//
-const apiConfigs = [
-  { 
-    name: "picedit", 
-    endpoint: "/edit-photo",
-    rateLimit: rateLimit ? {
-      windowMs: 5 * 60 * 1000,
-      max: 10,
-      message: {
-        error: "Too many image editing requests. Please wait before trying again.",
-        code: "IMAGE_EDIT_RATE_LIMIT"
-      }
-    } : null
-  },
-  { 
-    name: "imgbb", 
-    endpoint: "/imgbb" 
-  }
-];
-
-// Load APIs
-const loadedApis = [];
-const failedApis = [];
-
-apiConfigs.forEach(config => {
-  const loaded = loadAPI(config.name, config.endpoint, {
-    rateLimit: config.rateLimit
-  });
+// Health check endpoint to monitor API status
+app.get('/health', (req, res) => {
+  const health = {
+    server: 'running',
+    timestamp: new Date().toISOString(),
+    apis: Object.fromEntries(loadedAPIs)
+  };
   
-  if (loaded) {
-    loadedApis.push(config.name);
-  } else {
-    failedApis.push(config.name);
-  }
+  const hasFailedAPIs = Array.from(loadedAPIs.values()).some(api => 
+    api.status === 'failed' || api.status === 'error'
+  );
+  
+  res.status(hasFailedAPIs ? 206 : 200).json(health);
 });
 
-console.log(`\n📊 API Loading Summary:`);
-console.log(`  ✅ Loaded: ${loadedApis.length} APIs (${loadedApis.join(', ')})`);
-if (failedApis.length > 0) {
-  console.log(`  ❌ Failed: ${failedApis.length} APIs (${failedApis.join(', ')})`);
-}
-
-// API registry endpoint
-app.get("/api", (req, res) => {
+// Retry failed API loading endpoint (useful for development)
+app.post('/retry-api/:apiName', (req, res) => {
+  const { apiName } = req.params;
+  
+  if (!loadedAPIs.has(apiName)) {
+    return res.status(404).json({ error: 'API not found in registry' });
+  }
+  
+  const currentStatus = loadedAPIs.get(apiName);
+  if (currentStatus.status === 'active') {
+    return res.json({ message: 'API is already active', status: currentStatus });
+  }
+  
+  console.log(`🔄 Retrying to load ${apiName}...`);
+  
+  // Determine the custom endpoint if it was used
+  let customEndpoint = null;
+  if (currentStatus.path !== `/api/${apiName}`) {
+    customEndpoint = currentStatus.path;
+  }
+  
+  const success = loadAPI(apiName, customEndpoint);
+  const newStatus = loadedAPIs.get(apiName);
+  
   res.json({
-    message: "API Registry",
-    totalApis: app.locals.apiRegistry ? app.locals.apiRegistry.length : 0,
-    apis: app.locals.apiRegistry || [],
-    server: {
-      status: "running",
-      environment: NODE_ENV,
-      uptime: `${Math.floor(process.uptime())} seconds`
-    }
+    message: success ? 'API loaded successfully' : 'API loading failed',
+    status: newStatus
   });
 });
 
-// Basic error handling
+//--🧩 Load APIs with Error Isolation--//
+console.log('🔧 Loading APIs...');
+
+// Load each API independently - failures won't stop other APIs
+loadAPI("picedit", "/edit-photo");
+loadAPI("imgbb", "/imgbb");
+loadAPI("bgremove", "/api/remove-bg");
+loadAPI("faceblur"); // uses default: /api/faceblur
+
+// Add more APIs here as needed
+// loadAPI("newapi");
+
+console.log('📊 API Loading Summary:');
+loadedAPIs.forEach((status, name) => {
+  const emoji = status.status === 'active' ? '✅' : 
+                status.status === 'loading' ? '⏳' : '❌';
+  console.log(`${emoji} ${name}: ${status.status} (${status.path})`);
+});
+
+// Enhanced error handling middleware
 app.use((err, req, res, next) => {
-  console.error('Error:', err.message);
+  console.error('💥 Unhandled error:', err.stack);
   
-  if (err.code === 'LIMIT_FILE_SIZE') {
-    return res.status(413).json({ 
-      success: false,
-      error: 'File too large. Maximum size allowed is 10MB.',
-      code: 'FILE_TOO_LARGE'
-    });
-  }
-  
-  res.status(err.status || 500).json({ 
-    success: false,
-    error: NODE_ENV === 'development' ? err.message : 'Internal server error',
-    code: err.code || 'INTERNAL_ERROR'
+  // Don't crash the server
+  res.status(500).json({ 
+    error: 'Internal server error',
+    details: process.env.NODE_ENV === 'development' ? err.message : undefined
   });
 });
 
-// 404 handler
+// Enhanced 404 handler
 app.use((req, res) => {
   res.status(404).json({ 
-    success: false,
-    error: `Route not found: ${req.method} ${req.path}`,
-    code: 'ROUTE_NOT_FOUND',
-    availableEndpoints: {
-      "GET /": "Web interface",
-      "GET /ping": "Health check",
-      "GET /status": "Server status",
-      "GET /api": "API registry"
-    }
+    error: 'Route not found',
+    path: req.originalUrl,
+    availableEndpoints: [
+      '/',
+      '/ping',
+      '/health',
+      ...Array.from(loadedAPIs.values())
+        .filter(api => api.status === 'active')
+        .map(api => api.path)
+    ]
   });
 });
 
-// Graceful shutdown
-const gracefulShutdown = (signal) => {
-  console.log(`\n🛑 Received ${signal}, shutting down gracefully...`);
-  server.close(() => {
-    console.log('✅ Process terminated');
-    process.exit(0);
-  });
-};
+// Graceful shutdown handling
+process.on('SIGTERM', () => {
+  console.log('🛑 Received SIGTERM, shutting down gracefully...');
+  process.exit(0);
+});
 
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGINT', () => {
+  console.log('🛑 Received SIGINT, shutting down gracefully...');
+  process.exit(0);
+});
+
+// Handle uncaught exceptions (last resort)
+process.on('uncaughtException', (err) => {
+  console.error('💥 Uncaught Exception:', err);
+  // Don't exit immediately, give time for cleanup
+  setTimeout(() => process.exit(1), 1000);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't exit for unhandled rejections
+});
 
 //--Start server--//
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n🚀 Server started successfully!`);
-  console.log(`   📍 URL: http://localhost:${PORT}`);
-  console.log(`   🌍 Environment: ${NODE_ENV}`);
-  console.log(`   📊 APIs loaded: ${loadedApis.length}`);
-  console.log(`   ⏰ Started at: ${new Date().toISOString()}\n`);
+const server = app.listen(PORT, () => {
+  console.log(`🚀 Server running at http://localhost:${PORT}`);
+  console.log(`📊 Health check available at http://localhost:${PORT}/health`);
+  console.log(`🔧 Active APIs: ${Array.from(loadedAPIs.values()).filter(api => api.status === 'active').length}`);
+  console.log(`❌ Failed APIs: ${Array.from(loadedAPIs.values()).filter(api => api.status === 'failed').length}`);
 });
 
-// Handle server errors
+// Handle server startup errors
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`❌ Port ${PORT} is already in use. Trying different port...`);
-    // Try alternative port
-    const altPort = PORT + 1;
-    const altServer = app.listen(altPort, '0.0.0.0', () => {
-      console.log(`✅ Server started on alternative port: ${altPort}`);
-    });
+    console.error(`❌ Port ${PORT} is already in use`);
+    process.exit(1);
   } else {
-    console.error('❌ Server error:', err.message);
+    console.error('❌ Server error:', err);
+    process.exit(1);
   }
 });
-
-module.exports = app;
