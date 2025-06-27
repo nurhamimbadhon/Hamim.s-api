@@ -2,6 +2,14 @@ const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
 const editImage = require("./api");
+const cloudinary = require('cloudinary').v2;
+
+// Configure Cloudinary (you'll need to add these to your .env file)
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -47,16 +55,35 @@ module.exports = function (app, routePath) {
 
       const prompt = req.body.prompt;
       const imagePath = req.file.path;
+      
+      console.log("Processing image:", imagePath);
+      console.log("Prompt:", prompt);
 
-      // For deployment, you'll need to upload to a proper image hosting service
-      // This is a placeholder - replace with actual image hosting logic
+      // Upload image to Cloudinary to get a public URL
       const hostedImageUrl = await uploadToImageHost(imagePath);
+      console.log("Hosted image URL:", hostedImageUrl);
 
+      // Process image with Replicate
       const result = await editImage(hostedImageUrl, prompt);
+      console.log("Replicate result:", result);
+      
+      // Handle different response formats from Replicate
+      let imageUrl = null;
+      if (Array.isArray(result)) {
+        imageUrl = result[0];
+      } else if (typeof result === 'string') {
+        imageUrl = result;
+      } else if (result && result.output) {
+        imageUrl = Array.isArray(result.output) ? result.output[0] : result.output;
+      }
+
+      if (!imageUrl) {
+        throw new Error("No image URL returned from Replicate API");
+      }
       
       res.json({ 
         success: true,
-        result: result,
+        result: [imageUrl], // Ensure it's always an array for frontend compatibility
         message: "Image processed successfully"
       });
 
@@ -84,10 +111,19 @@ module.exports = function (app, routePath) {
   });
 };
 
-// Placeholder function - implement actual image hosting
+// Upload image to Cloudinary
 async function uploadToImageHost(imagePath) {
-  // TODO: Implement actual image hosting (e.g., Cloudinary, AWS S3, etc.)
-  // For now, return a placeholder URL
-  const filename = path.basename(imagePath);
-  return `https://your-image-host.com/uploads/${filename}`;
+  try {
+    const result = await cloudinary.uploader.upload(imagePath, {
+      folder: 'picedit',
+      resource_type: 'image'
+    });
+    return result.secure_url;
+  } catch (error) {
+    console.error("Error uploading to Cloudinary:", error);
+    
+    // Fallback: Try using a simple file hosting service
+    // You can replace this with any other image hosting service
+    throw new Error("Failed to upload image to hosting service");
   }
+}
