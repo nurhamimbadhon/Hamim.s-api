@@ -15,7 +15,7 @@
   },
   "keywords": [
     "api",
-    "image-processing", 
+    "image-processing",
     "express",
     "ai",
     "replicate",
@@ -59,7 +59,6 @@
   "optionalDependencies": {
     "sharp": "^0.32.6"
   },
-  "peerDependencies": {},
   "config": {
     "port": 3000,
     "max_file_size": "10MB",
@@ -70,6 +69,6 @@
     "> 1%",
     "last 2 versions",
     "not dead"
-  ],
-  "packageManager": "npm@9.0.0"
+  ]
+  // Removed "packageManager" to avoid conflicts (or keep as "npm@9.0.0" if needed)
 }
