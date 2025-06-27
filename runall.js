@@ -26,12 +26,12 @@ function loadAPI(apiName) {
   }
 }
 
-//--🧩Add API's
+//--🧩Add API's--//
 loadAPI("picedit");
 // loadAPI("bgremove");
 // loadAPI("faceblur"); // Add more like this later
 
-// Start server
+//--Start server--//
 app.listen(PORT, () => {
   console.log(`🚀 App running at http://localhost:${PORT}`);
 });
