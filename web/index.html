@@ -1,1 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Image Toolkit</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>🧠 AI Image Toolkit</h1>
 
+    <form id="editForm">
+      <label for="image">Upload Image</label>
+      <input type="file" name="image" id="image" required />
+
+      <label for="prompt">Edit Prompt</label>
+      <input type="text" name="prompt" id="prompt" placeholder="e.g. turn into cartoon" required />
+
+      <button type="submit">Edit Photo</button>
+    </form>
+
+    <div id="loading">⏳ Processing...</div>
+    <img id="resultImage" src="" alt="Result will appear here" />
+  </div>
+
+  <script src="function.js"></script>
+</body>
+</html>
