@@ -6,6 +6,16 @@ require("dotenv").config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Middleware for parsing JSON and URL-encoded data
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Create uploads directory if it doesn't exist
+const uploadsDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
 //--Serve web--//
 app.use(express.static(path.join(__dirname, "web")));
 app.get("/", (req, res) => {
@@ -16,12 +26,16 @@ app.get("/ping", (req, res) => res.send("pong"));
 
 //--🧠 Dynamic API Loader--//
 function loadAPI(apiName, customEndpoint = null) {
-  const apiPath = `./${apiName}/server.js`;
+  const apiPath = path.join(__dirname, apiName, "server.js");
   if (fs.existsSync(apiPath)) {
-    const register = require(apiPath);
-    const routePath = customEndpoint || `/api/${apiName}`;
-    register(app, routePath); // e.g. /api/picedit or custom
-    console.log(`✅ Loaded: ${apiName} at ${routePath}`);
+    try {
+      const register = require(apiPath);
+      const routePath = customEndpoint || `/api/${apiName}`;
+      register(app, routePath);
+      console.log(`✅ Loaded: ${apiName} at ${routePath}`);
+    } catch (error) {
+      console.error(`❌ Error loading ${apiName}:`, error.message);
+    }
   } else {
     console.warn(`⚠️  ${apiPath} not found.`);
   }
@@ -32,6 +46,17 @@ loadAPI("picedit", "/edit-photo");
 loadAPI("imgbb", "/imgbb");
 // loadAPI("bgremove", "/api/remove-bg");
 // loadAPI("faceblur"); // uses default: /api/faceblur
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Something went wrong!' });
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'Route not found' });
+});
 
 //--Start server--//
 app.listen(PORT, () => {
