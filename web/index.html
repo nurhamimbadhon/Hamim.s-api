@@ -24,6 +24,20 @@
     <img id="resultImage" src="" alt="Result will appear here" />
   </div>
 
+    <!-- ImgBB Upload Form -->
+    <form id="imgbbForm">
+      <h2>Upload Image to ImgBB</h2>
+      <label for="imgbbImage">Select Image</label>
+      <input type="file" name="image" id="imgbbImage" required />
+
+      <button type="submit">Upload to ImgBB</button>
+    </form>
+
+    <div id="imgbbLoading" class="loading">⏳ Uploading...</div>
+    <img id="imgbbResultImage" alt="ImgBB uploaded image" />
+    <p>Image URL: <a id="imgbbResultLink" href="#" target="_blank"></a></p>
+</div>
+
   <script src="function.js"></script>
 </body>
 </html>
