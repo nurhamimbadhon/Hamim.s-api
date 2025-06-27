@@ -70,5 +70,4 @@
     "last 2 versions",
     "not dead"
   ]
-  // Removed "packageManager" to avoid conflicts (or keep as "npm@9.0.0" if needed)
 }
