@@ -59,3 +59,10 @@ button:hover {
   margin-top: 20px;
   border-radius: 10px;
 }
+
+.loading {
+  display: none;
+  text-align: center;
+  font-weight: bold;
+  margin-top: 15px;
+}
