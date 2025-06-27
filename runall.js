@@ -15,21 +15,22 @@ app.get("/", (req, res) => {
 app.get("/ping", (req, res) => res.send("pong"));
 
 //--🧠 Dynamic API Loader--//
-function loadAPI(apiName) {
+function loadAPI(apiName, customEndpoint = null) {
   const apiPath = `./${apiName}/server.js`;
   if (fs.existsSync(apiPath)) {
     const register = require(apiPath);
-    register(app, `/api/${apiName}`); // e.g. /api/picedit
-    console.log(`✅ Loaded: /api/${apiName}`);
+    const routePath = customEndpoint || `/api/${apiName}`;
+    register(app, routePath); // e.g. /api/picedit or custom
+    console.log(`✅ Loaded: ${apiName} at ${routePath}`);
   } else {
     console.warn(`⚠️  ${apiPath} not found.`);
   }
 }
 
 //--🧩Add API's--//
-loadAPI("picedit");
-// loadAPI("bgremove");
-// loadAPI("faceblur"); // Add more like this later
+loadAPI("picedit", "/edit-photo");
+// loadAPI("bgremove", "/api/remove-bg");
+// loadAPI("faceblur"); // uses default: /api/faceblur
 
 //--Start server--//
 app.listen(PORT, () => {
