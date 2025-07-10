@@ -44,6 +44,7 @@ function loadAPI(apiName, customEndpoint = null) {
 //--🧩Add API's--//
 loadAPI("picedit", "/edit-photo");
 loadAPI("imgbb", "/imgbb");
+loadAPI("convert", "/Media-text");
 // loadAPI("bgremove", "/api/remove-bg");
 // loadAPI("faceblur"); // uses default: /api/faceblur
 
