@@ -7,164 +7,208 @@ const ffmpeg = require("fluent-ffmpeg");
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
 
-// Mock transcription function that simulates speech-to-text
-function mockTranscription(lang) {
-  const mockResponses = {
-    en: "Hello, this is a sample transcription in English.",
-    bn: "হ্যালো, এটি বাংলায় একটি নমুনা ট্রান্সক্রিপশন।",
-    hi: "नमस्ते, यह हिंदी में एक नमूना ट्रांसक्रिप्शन है।",
-    pt: "Olá, esta é uma transcrição de exemplo em português.",
-    ko: "안녕하세요, 이것은 한국어 샘플 전사입니다.",
-    banglish: "Hello, ei ekta banglish e sample transcription."
-  };
-  
-  return mockResponses[lang] || mockResponses.en;
-}
+// Mock transcription responses for different languages
+const mockResponses = {
+  en: "Hello, this is a sample transcription in English. The audio has been processed successfully.",
+  bn: "হ্যালো, এটি বাংলায় একটি নমুনা ট্রান্সক্রিপশন। অডিও সফলভাবে প্রক্রিয়া করা হয়েছে।",
+  hi: "नमस्ते, यह हिंदी में एक नमूना ट्रांसक्रिप्शन है। ऑडियो को सफलतापूर्वक प्रोसेस किया गया है।",
+  pt: "Olá, esta é uma transcrição de exemplo em português. O áudio foi processado com sucesso.",
+  ko: "안녕하세요, 이것은 한국어 샘플 전사입니다. 오디오가 성공적으로 처리되었습니다.",
+  banglish: "Hello, ei ekta banglish e sample transcription. Audio successfully process kora hoyeche."
+};
 
-// Simple audio analysis (very basic)
-function analyzeAudioDuration(audioPath) {
+// Word banks for generating realistic transcriptions
+const wordBanks = {
+  en: [
+    "Hello", "thank", "you", "please", "how", "are", "you", "today",
+    "this", "is", "a", "test", "of", "speech", "recognition", "system",
+    "audio", "quality", "sounds", "good", "clear", "voice", "recording"
+  ],
+  bn: [
+    "হ্যালো", "ধন্যবাদ", "আপনি", "কেমন", "আছেন", "আজ", "এটি", "একটি",
+    "স্পিচ", "রিকগনিশন", "সিস্টেম", "অডিও", "গুণমান", "ভাল", "স্পষ্ট"
+  ],
+  hi: [
+    "नमस्ते", "धन्यवाद", "आप", "कैसे", "हैं", "आज", "यह", "एक",
+    "स्पीच", "रिकग्निशन", "सिस्टम", "ऑडियो", "गुणवत्ता", "अच्छी", "स्पष्ट"
+  ],
+  pt: [
+    "Olá", "obrigado", "você", "como", "está", "hoje", "este", "é",
+    "um", "sistema", "de", "reconhecimento", "de", "fala", "áudio", "qualidade"
+  ],
+  ko: [
+    "안녕하세요", "감사합니다", "당신", "어떻게", "오늘", "이것은", "음성",
+    "인식", "시스템", "오디오", "품질", "좋은", "명확한"
+  ],
+  banglish: [
+    "Hello", "dhonnobad", "apni", "kemon", "achen", "ajke", "ei", "ekta",
+    "speech", "recognition", "system", "audio", "quality", "bhalo", "clear"
+  ]
+};
+
+// Analyze audio properties
+function analyzeAudioProperties(audioPath) {
   return new Promise((resolve, reject) => {
     ffmpeg.ffprobe(audioPath, (err, metadata) => {
       if (err) {
-        reject(err);
+        resolve({ duration: 5, sampleRate: 16000 }); // Default values
       } else {
-        const duration = metadata.format.duration || 0;
-        resolve(duration);
+        const duration = metadata.format.duration || 5;
+        const sampleRate = metadata.streams[0]?.sample_rate || 16000;
+        resolve({ duration, sampleRate });
       }
     });
   });
 }
 
-// Generate transcription based on audio length and language
-function generateTranscriptionByDuration(duration, lang) {
-  const wordsPerSecond = 2; // Average speaking rate
-  const estimatedWords = Math.floor(duration * wordsPerSecond);
+// Generate realistic transcription based on audio properties
+function generateRealisticTranscription(audioProperties, lang) {
+  const { duration } = audioProperties;
+  const wordsPerSecond = 1.5; // Average speaking rate
+  const estimatedWords = Math.max(3, Math.floor(duration * wordsPerSecond));
   
-  const sampleTexts = {
-    en: [
-      "Hello", "this", "is", "a", "speech", "recognition", "test",
-      "please", "check", "if", "the", "audio", "is", "clear",
-      "thank", "you", "for", "using", "our", "service"
-    ],
-    bn: [
-      "হ্যালো", "এটি", "একটি", "স্পিচ", "রিকগনিশন", "টেস্ট",
-      "অডিও", "স্পষ্ট", "কিনা", "চেক", "করুন", "ধন্যবাদ"
-    ],
-    hi: [
-      "नमस्ते", "यह", "एक", "स्पीच", "रिकग्निशन", "टेस्ट", "है",
-      "कृपया", "जांचें", "कि", "ऑडियो", "स्पष्ट", "है"
-    ],
-    pt: [
-      "Olá", "este", "é", "um", "teste", "de", "reconhecimento",
-      "de", "fala", "por", "favor", "verifique", "se", "o", "áudio"
-    ],
-    ko: [
-      "안녕하세요", "이것은", "음성", "인식", "테스트입니다",
-      "오디오가", "명확한지", "확인해", "주세요"
-    ],
-    banglish: [
-      "Hello", "ei", "ekta", "speech", "recognition", "test",
-      "audio", "clear", "ache", "kina", "check", "koren"
-    ]
-  };
-  
-  const words = sampleTexts[lang] || sampleTexts.en;
+  const words = wordBanks[lang] || wordBanks.en;
   const selectedWords = [];
   
-  for (let i = 0; i < Math.min(estimatedWords, words.length); i++) {
-    selectedWords.push(words[i % words.length]);
+  // Generate words based on estimated count
+  for (let i = 0; i < estimatedWords; i++) {
+    const randomIndex = Math.floor(Math.random() * words.length);
+    selectedWords.push(words[randomIndex]);
   }
   
   return selectedWords.join(" ");
 }
 
+// Apply language-specific post-processing
+function applyPostProcessing(text, lang) {
+  if (lang === "hi") {
+    return text
+      .replace(/ā/g, "aa")
+      .replace(/ī/g, "ee")
+      .replace(/ū/g, "oo")
+      .replace(/ṅ/g, "n")
+      .replace(/ṭ/g, "t")
+      .replace(/ḍ/g, "d")
+      .replace(/ṇ/g, "n")
+      .replace(/ś/g, "sh")
+      .replace(/ṣ/g, "sh")
+      .replace(/ḥ/g, "h");
+  }
+  return text;
+}
+
+// Main transcription endpoint
 router.post("/transcribe", upload.single("media"), async (req, res) => {
   const lang = req.body.lang || "en";
   const filePath = req.file.path;
   const audioPath = `${filePath}.wav`;
 
   try {
+    console.log(`🎵 Processing audio file for language: ${lang}`);
+    
     // Convert to WAV format
     await new Promise((resolve, reject) => {
       ffmpeg(filePath)
         .audioCodec("pcm_s16le")
         .audioFrequency(16000)
         .format("wav")
-        .on("end", resolve)
-        .on("error", reject)
+        .on("end", () => {
+          console.log("✅ Audio conversion completed");
+          resolve();
+        })
+        .on("error", (err) => {
+          console.error("❌ Audio conversion failed:", err);
+          reject(err);
+        })
         .save(audioPath);
     });
 
-    // Analyze audio duration
-    const duration = await analyzeAudioDuration(audioPath);
-    
-    // Generate transcription based on duration and language
+    // Analyze audio properties
+    const audioProperties = await analyzeAudioProperties(audioPath);
+    console.log(`📊 Audio analysis: ${audioProperties.duration}s duration`);
+
+    // Generate transcription
     let text;
-    if (duration > 0) {
-      text = generateTranscriptionByDuration(duration, lang);
+    if (audioProperties.duration > 0.5) {
+      text = generateRealisticTranscription(audioProperties, lang);
     } else {
-      text = mockTranscription(lang);
+      text = mockResponses[lang] || mockResponses.en;
     }
 
-    // Apply post-processing if needed
-    let processedText = text;
-    if (lang === "hi") {
-      processedText = processedText
-        .replace(/ā/g, "aa")
-        .replace(/ī/g, "ee")
-        .replace(/ū/g, "oo")
-        .replace(/ṅ/g, "n")
-        .replace(/ṭ/g, "t")
-        .replace(/ḍ/g, "d")
-        .replace(/ṇ/g, "n")
-        .replace(/ś/g, "sh")
-        .replace(/ṣ/g, "sh")
-        .replace(/ḥ/g, "h");
-    }
+    // Apply post-processing
+    const processedText = applyPostProcessing(text, lang);
 
-    res.json({ 
-      lang, 
+    console.log(`✅ Transcription completed: ${processedText.substring(0, 50)}...`);
+
+    res.json({
+      lang,
       text: processedText,
-      duration: duration,
-      note: "This is a mock transcription. For real transcription, please configure a speech service."
+      duration: audioProperties.duration,
+      wordCount: processedText.split(" ").length,
+      processingTime: new Date().toISOString(),
+      note: "Mock transcription - configure a real speech service for production use"
     });
 
   } catch (error) {
-    console.error("Processing failed:", error);
-    res.status(500).json({ 
-      error: "Processing failed", 
-      details: error.message 
+    console.error("❌ Processing failed:", error);
+    res.status(500).json({
+      error: "Audio processing failed",
+      details: error.message,
+      lang
     });
   } finally {
     // Clean up temporary files
     try {
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-      if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        console.log("🗑️ Cleaned up original file");
+      }
+      if (fs.existsSync(audioPath)) {
+        fs.unlinkSync(audioPath);
+        console.log("🗑️ Cleaned up converted file");
+      }
     } catch (cleanupError) {
-      console.error("Cleanup error:", cleanupError);
+      console.error("⚠️ Cleanup error:", cleanupError);
     }
   }
 });
 
 // Health check endpoint
 router.get("/health", (req, res) => {
-  res.json({ 
-    status: "ok", 
-    mode: "mock_transcription",
+  res.json({
+    status: "✅ API is running",
+    mode: "Mock Transcription",
     timestamp: new Date().toISOString(),
-    supported_languages: ["en", "bn", "hi", "pt", "ko", "banglish"]
+    supportedLanguages: Object.keys(mockResponses),
+    version: "1.0.0"
   });
 });
 
-// Demo endpoint to test without audio
+// Demo endpoint to test different languages
 router.get("/demo/:lang?", (req, res) => {
   const lang = req.params.lang || "en";
-  const mockText = mockTranscription(lang);
+  const mockText = mockResponses[lang] || mockResponses.en;
   
   res.json({
     lang,
     text: mockText,
-    note: "This is a demo response"
+    type: "demo",
+    note: "This is a demo response without audio processing"
+  });
+});
+
+// List supported languages
+router.get("/languages", (req, res) => {
+  res.json({
+    supportedLanguages: [
+      { code: "en", name: "English" },
+      { code: "bn", name: "Bengali" },
+      { code: "hi", name: "Hindi" },
+      { code: "pt", name: "Portuguese" },
+      { code: "ko", name: "Korean" },
+      { code: "banglish", name: "Banglish" }
+    ],
+    defaultLanguage: "en"
   });
 });
 
